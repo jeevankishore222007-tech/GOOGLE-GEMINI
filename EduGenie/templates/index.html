@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduGenie — AI Learning Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+    <main class="app-shell">
+        <header class="hero">
+            <div class="badge">✨ AI Learning Assistant</div>
+            <h1>Welcome to <span>EduGenie</span></h1>
+            <p>Ask, understand, practice, summarize, and build your learning path.</p>
+        </header>
+
+        <section class="grid">
+            <article class="card">
+                <div class="card-icon">💬</div>
+                <h2>Ask a Question</h2>
+                <p class="hint">Get a concise educational answer.</p>
+                <textarea id="qaInput" placeholder="e.g. Which is the largest ocean?"></textarea>
+                <button onclick="runTask('qa')">Get Answer</button>
+                <div id="qaResult" class="result" hidden></div>
+            </article>
+
+            <article class="card">
+                <div class="card-icon">💡</div>
+                <h2>Explain a Topic</h2>
+                <p class="hint">Break a difficult concept into simple language.</p>
+                <input id="explainInput" placeholder="e.g. Photosynthesis">
+                <button onclick="runTask('explain')">Explain</button>
+                <div id="explainResult" class="result" hidden></div>
+            </article>
+
+            <article class="card">
+                <div class="card-icon">📝</div>
+                <h2>Summarize</h2>
+                <p class="hint">Turn a long passage into quick revision notes.</p>
+                <textarea id="summaryInput" placeholder="Paste a paragraph or lesson here..."></textarea>
+                <button onclick="runTask('summarize')">Summarize</button>
+                <div id="summaryResult" class="result" hidden></div>
+            </article>
+
+            <article class="card">
+                <div class="card-icon">🧠</div>
+                <h2>Generate a Quiz</h2>
+                <p class="hint">Create 3 MCQs with 4 options each.</p>
+                <textarea id="quizInput" placeholder="e.g. Pythagoras theorem"></textarea>
+                <button onclick="runTask('quiz')">Generate Quiz</button>
+                <div id="quizResult" class="result" hidden></div>
+            </article>
+
+            <article class="card card-wide">
+                <div class="card-icon">🧭</div>
+                <h2>Learning Recommendations</h2>
+                <p class="hint">Get a beginner-to-advanced study plan.</p>
+                <input id="learnInput" placeholder="e.g. SQL">
+                <button onclick="runTask('learn')">Get Recommendations</button>
+                <div id="learnResult" class="result" hidden></div>
+            </article>
+        </section>
+
+        <footer>
+            <span>EduGenie</span> • FastAPI + Google Gemini
+        </footer>
+    </main>
+
+    <script>
+        const endpoints = {
+            qa: ["/qa", "qaInput", "qaResult", "text"],
+            explain: ["/explain", "explainInput", "explainResult", "topic"],
+            summarize: ["/summarize", "summaryInput", "summaryResult", "text"],
+            quiz: ["/quiz", "quizInput", "quizResult", "text"],
+            learn: ["/learn/recommendations", "learnInput", "learnResult", "topic"]
+        };
+
+        async function runTask(type) {
+            const [endpoint, inputId, resultId, field] = endpoints[type];
+            const input = document.getElementById(inputId);
+            const result = document.getElementById(resultId);
+            const value = input.value.trim();
+
+            if (!value) {
+                showResult(result, "Please enter some content first.", true);
+                return;
+            }
+
+            setLoading(result);
+            try {
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({[field]: value})
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "Something went wrong.");
+                }
+
+                if (type === "quiz") {
+                    renderQuiz(result, data.quiz);
+                } else {
+                    const output = type === "qa"
+                        ? data.answer
+                        : type === "explain"
+                        ? data.explanation
+                        : type === "summarize"
+                        ? data.summary
+                        : data.recommendation;
+                    showResult(result, output);
+                }
+            } catch (error) {
+                showResult(result, error.message || "Request failed.", true);
+            }
+        }
+
+        function setLoading(result) {
+            result.hidden = false;
+            result.className = "result loading";
+            result.textContent = "EduGenie is thinking…";
+        }
+
+        function showResult(result, text, error = false) {
+            result.hidden = false;
+            result.className = error ? "result error" : "result";
+            result.textContent = text;
+        }
+
+        function renderQuiz(result, questions) {
+            result.hidden = false;
+            result.className = "result quiz-result";
+            result.innerHTML = "";
+
+            questions.forEach((q, index) => {
+                const wrapper = document.createElement("div");
+                wrapper.className = "quiz-question";
+
+                const title = document.createElement("h3");
+                title.textContent = `Q${index + 1}. ${q.question}`;
+                wrapper.appendChild(title);
+
+                q.options.forEach((option, optionIndex) => {
+                    const label = document.createElement("label");
+                    label.className = "option";
+
+                    const radio = document.createElement("input");
+                    radio.type = "radio";
+                    radio.name = `quiz-${index}`;
+                    radio.value = option;
+
+                    const span = document.createElement("span");
+                    span.textContent = option;
+
+                    label.appendChild(radio);
+                    label.appendChild(span);
+                    wrapper.appendChild(label);
+                });
+
+                const checkButton = document.createElement("button");
+                checkButton.className = "secondary";
+                checkButton.textContent = "Check Answer";
+                checkButton.onclick = () => {
+                    const selected = wrapper.querySelector("input:checked");
+                    if (!selected) {
+                        feedback.textContent = "Choose an option first.";
+                        feedback.className = "feedback warn";
+                        return;
+                    }
+
+                    if (selected.value === q.answer) {
+                        feedback.textContent = "✓ Correct!";
+                        feedback.className = "feedback correct";
+                    } else {
+                        feedback.textContent = `✗ Not quite. Correct answer: ${q.answer}`;
+                        feedback.className = "feedback wrong";
+                    }
+                };
+                wrapper.appendChild(checkButton);
+
+                const feedback = document.createElement("div");
+                feedback.className = "feedback";
+                wrapper.appendChild(feedback);
+
+                result.appendChild(wrapper);
+            });
+        }
+    </script>
+</body>
+</html>
